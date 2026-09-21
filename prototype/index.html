@@ -31,8 +31,9 @@
   .rail .bar i.dn{background:var(--red)} .rail .bar i.up{background:var(--green)}
   .hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(15,23,41,.85);border:1px solid var(--line);padding:8px 16px;font-family:var(--mono);font-size:12px;color:var(--paper);white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
   .hint span{color:var(--brass)}
-  .toast{position:absolute;left:50%;top:18%;transform:translateX(-50%);background:rgba(239,230,210,.96);color:#1B2233;font-family:var(--serif);font-size:15px;padding:12px 18px;max-width:min(520px,88vw);border-left:4px solid var(--brass);opacity:0;transition:opacity .35s;box-shadow:0 10px 30px rgba(0,0,0,.4)}
-  .toast.show{opacity:1}
+  .toast{position:absolute;left:50%;top:18%;transform:translate(-50%,-12px) scale(.98);background:rgba(239,230,210,.96);color:#1B2233;font-family:var(--serif);font-size:15px;padding:12px 18px;max-width:min(520px,88vw);border-left:4px solid var(--brass);opacity:0;transition:opacity .3s,transform .5s cubic-bezier(.2,.9,.3,1.25);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
+  .caret{color:var(--brass);animation:blink 1s steps(2) infinite} @keyframes blink{50%{opacity:0}}
   .toast.bad{border-left-color:var(--red)} .toast.good{border-left-color:var(--green)}
   .mute{position:absolute;right:14px;bottom:18px;pointer-events:auto;background:rgba(15,23,41,.82);border:1px solid var(--line);color:var(--slate);font-family:var(--mono);font-size:11px;padding:6px 10px;cursor:pointer}
   .mute:focus-visible{outline:2px solid var(--brass)}
@@ -339,8 +340,9 @@ const SFX = (() => {
   }
   // A page turn in three layers: the lift (a rising swish), the fold (fibre crackles), the landing (a soft flap).
   function src(t, dur){ const b=ctx.createBufferSource(); b.buffer=noiseBuf; b.loop=true; b.start(t, Math.random()*1.6); b.stop(t+dur+0.05); return b; }
-  function pageSound(len, amp){
-    const t0=ctx.currentTime, j=()=>0.88+Math.random()*0.24, L=len/0.6;
+  function pageSound(len, amp, parts){
+    const t0=ctx.currentTime, j=()=>0.88+Math.random()*0.24, L=len/0.6; parts=parts||'all';
+    if(parts!=='land'){
     // 1. lift swish
     const s=src(t0, 0.5*L); const bp=ctx.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=0.8;
     bp.frequency.setValueAtTime(650*j(),t0); bp.frequency.exponentialRampToValueAtTime(4200*j(), t0+0.34*L);
@@ -352,8 +354,10 @@ const SFX = (() => {
     for(let i=0;i<n;i++){ const tc=t0+(0.18+Math.random()*0.24)*L; const c=src(tc,0.03); const f=ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value=2200+Math.random()*3500;
       const cg=ctx.createGain(); cg.gain.setValueAtTime(0.0001,tc); cg.gain.exponentialRampToValueAtTime((0.10+Math.random()*0.14)*amp,tc+0.0015); cg.gain.exponentialRampToValueAtTime(0.0001,tc+0.006+Math.random()*0.014);
       c.connect(f); f.connect(cg); cg.connect(master); }
+    }
+    if(parts==='lift') return;
     // 3. landing flap: a low-mid thump plus a short broadband slap
-    const tl=t0+0.5*L; const l=src(tl,0.12); const lf=ctx.createBiquadFilter(); lf.type='bandpass'; lf.frequency.value=360*j(); lf.Q.value=1.1;
+    const tl=parts==='land'?t0:t0+0.5*L; const l=src(tl,0.12); const lf=ctx.createBiquadFilter(); lf.type='bandpass'; lf.frequency.value=360*j(); lf.Q.value=1.1;
     const lg=ctx.createGain(); lg.gain.setValueAtTime(0.0001,tl); lg.gain.exponentialRampToValueAtTime(0.30*amp,tl+0.006); lg.gain.exponentialRampToValueAtTime(0.0001,tl+0.10);
     l.connect(lf); lf.connect(lg); lg.connect(master);
     const l2=src(tl,0.08); const lf2=ctx.createBiquadFilter(); lf2.type='highpass'; lf2.frequency.value=1400;
@@ -376,8 +380,10 @@ const SFX = (() => {
     init,
     setMuted(m){ muted=m; if(master) master.gain.value = m?0:1.0; },
     thunk(){ if(!ctx||muted) return; tone('sine',110,38,0.22,0.7); noise(0.09,'lowpass',900,1,0.5); noise(0.04,'bandpass',2400,2,0.25); },
-    paper(){ if(!ctx||muted) return; pageSound(0.36, 0.7); },
-    pageTurn(){ if(!ctx||muted) return; pageSound(0.6, 1.0); },
+    paper(){ if(!ctx||muted) return; pageSound(0.36, 0.7, 'all'); },
+    pageTurn(){ if(!ctx||muted) return; pageSound(0.6, 1.0, 'all'); },
+    pageLift(){ if(!ctx||muted) return; pageSound(0.6, 1.0, 'lift'); },
+    pageLand(){ if(!ctx||muted) return; pageSound(0.6, 1.0, 'land'); },
     place(){ if(!ctx||muted) return; noise(0.06,'lowpass',1200,1,0.18); },
     wood(){ if(!ctx||muted) return; noise(0.035,'bandpass',2200,3,0.3); tone('triangle',420,180,0.06,0.15); },
     chime(){ if(!ctx||muted) return; tone('sine',880,880,0.35,0.12); setTimeout(()=>tone('sine',1318,1318,0.5,0.12),110); },
@@ -1056,13 +1062,15 @@ const BOOK=(function(){
   const pileL=mk(new THREE.BoxGeometry(PW,0.001,PH),new THREE.MeshStandardMaterial({color:0xe6dcc6,roughness:0.95}),-(SPINE/2+PW/2),0,0);
   const pileR=mk(new THREE.BoxGeometry(PW,0.001,PH),new THREE.MeshStandardMaterial({color:0xe6dcc6,roughness:0.95}),(SPINE/2+PW/2),0,0);
   const pageGeo=new THREE.PlaneGeometry(PW,PH);
+  function pageGeoBend(){ const geo=new THREE.PlaneGeometry(PW,PH,28,6); geo.rotateX(-Math.PI/2); geo.translate(SPINE/2+PW/2,0,0); geo.userData.base=Float32Array.from(geo.attributes.position.array); return geo; }
+  const geoF=pageGeoBend(), geoB=pageGeoBend(); { const uv=geoB.attributes.uv; for(let i=0;i<uv.count;i++) uv.setX(i,1-uv.getX(i)); const idx=geoB.index.array; for(let i=0;i<idx.length;i+=3){ const t=idx[i+1]; idx[i+1]=idx[i+2]; idx[i+2]=t; } geoB.computeVertexNormals(); }
   const left=new THREE.Mesh(pageGeo,paperM()); left.rotation.x=-Math.PI/2; left.position.set(-(SPINE/2+PW/2),0.001,0); left.receiveShadow=true; g.add(left);
   const right=new THREE.Mesh(pageGeo,paperM()); right.rotation.x=-Math.PI/2; right.position.set((SPINE/2+PW/2),0.001,0); right.receiveShadow=true; g.add(right);
   const flip=new THREE.Group(); flip.position.set(0,0.0015,0); g.add(flip);
-  const front=new THREE.Mesh(pageGeo,paperM()); front.rotation.x=-Math.PI/2; front.position.set(SPINE/2+PW/2,0.0004,0); flip.add(front);
-  const back=new THREE.Mesh(pageGeo,paperM()); back.rotation.set(-Math.PI/2,0,Math.PI,'ZXY'); back.position.set(SPINE/2+PW/2,-0.0004,0); flip.add(back);
+  const front=new THREE.Mesh(geoF,paperM()); front.position.y=0.0004; flip.add(front);
+  const back=new THREE.Mesh(geoB,paperM()); back.position.y=-0.0004; flip.add(back);
   flip.visible=false;
-  return {g,left,right,flip,front,back,pileL,pileR,spread:0,anim:null,target:new THREE.Vector3(0,-0.05,-0.50),rx:1.12};
+  return {g,left,right,flip,front,back,geoF,geoB,pileL,pileR,spread:0,anim:null,vel:new THREE.Vector3(),target:new THREE.Vector3(0,-0.05,-0.50),rx:1.12};
 })();
 const NSPREADS=Math.ceil(PAGES.length/2);
 function showSpread(k){ BOOK.spread=Math.max(0,Math.min(NSPREADS-1,k)); const L=2*BOOK.spread-1, R=2*BOOK.spread;
@@ -1070,20 +1078,25 @@ function showSpread(k){ BOOK.spread=Math.max(0,Math.min(NSPREADS-1,k)); const L=
   const nL=Math.max(0,2*BOOK.spread), nR=Math.max(0,PAGES.length-2*BOOK.spread); const tL=0.0005*nL, tR=0.0005*nR;
   BOOK.pileL.scale.y=Math.max(1,tL/0.001); BOOK.pileL.position.y=tL/2; BOOK.left.position.y=tL+0.0006; BOOK.pileR.scale.y=Math.max(1,tR/0.001); BOOK.pileR.position.y=tR/2; BOOK.right.position.y=tR+0.0006; BOOK.flip.position.y=Math.max(tL,tR)+0.0012;
   updateDocbar(); }
+function deformPage(bend){ [BOOK.geoF,BOOK.geoB].forEach(geo=>{ const pos=geo.attributes.position, base=geo.userData.base; for(let i=0;i<pos.count;i++){ const d=base[i*3], z=base[i*3+2]; const dn=Math.max(0,(d-SPINE/2)/PW); const phi=bend*Math.pow(dn,1.5); pos.setXYZ(i,d*Math.cos(phi),d*Math.sin(phi),z); } pos.needsUpdate=true; geo.computeVertexNormals(); }); }
 function turnPage(dir){ if(BOOK.anim||!S.book) return; const k=BOOK.spread; if(dir>0&&k>=NSPREADS-1) return; if(dir<0&&k<=0) return;
-  if(dir>0){ BOOK.front.material.map=pageTex(2*k); BOOK.back.material.map=pageTex(2*k+1); BOOK.right.material.map=pageTex(2*k+2); BOOK.flip.rotation.z=0; }
-  else { BOOK.front.material.map=pageTex(2*k-2); BOOK.back.material.map=pageTex(2*k-1); BOOK.left.material.map=pageTex(2*k-3); BOOK.flip.rotation.z=Math.PI; }
-  [BOOK.front,BOOK.back,BOOK.left,BOOK.right].forEach(m=>m.material.needsUpdate=true); BOOK.flip.visible=true; BOOK.anim={dir,t:0,k}; SFX.pageTurn(); handState.right.pose='turn'; }
-function updateBook(dt){ if(!S.book) return; const a=BOOK.anim;
-  if(a){ a.t+=dt; const u=Math.min(1,a.t/0.6), e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2; BOOK.flip.rotation.z=a.dir>0?e*Math.PI:(1-e)*Math.PI; BOOK.flip.position.y=Math.max(BOOK.pileL.scale.y,BOOK.pileR.scale.y)*0.001+0.0012+Math.sin(u*Math.PI)*0.02;
-    if(u>=0.55&&handState.right.pose==='turn') handState.right.pose='holdBook';
-    if(u>=1){ BOOK.flip.visible=false; BOOK.anim=null; showSpread(a.k+a.dir); } }
+  if(dir>0){ BOOK.front.material.map=pageTex(2*k); BOOK.back.material.map=pageTex(2*k+1); BOOK.right.material.map=pageTex(2*k+2); }
+  else { BOOK.front.material.map=pageTex(2*k-2); BOOK.back.material.map=pageTex(2*k-1); BOOK.left.material.map=pageTex(2*k-3); }
+  [BOOK.front,BOOK.back,BOOK.left,BOOK.right].forEach(m=>m.material.needsUpdate=true); BOOK.flip.visible=true;
+  const pile=Math.max(BOOK.pileL.scale.y,BOOK.pileR.scale.y)*0.001+0.0012; const th=u=>dir>0?u*Math.PI:(1-u)*Math.PI; const sg=dir>0?-1:1;
+  BOOK.flip.rotation.z=th(0); deformPage(0); SFX.pageLift(); handState.right.pose='turn';
+  BOOK.anim=Anim.run([
+    {dur:0.14,ease:Ease.outCubic,update:u=>{ BOOK.flip.rotation.z=th(0.06*u); deformPage(sg*0.28*u); BOOK.flip.position.y=pile+0.006*u; }},
+    {dur:0.5,ease:Ease.inOutCubic,update:u=>{ const uu=0.06+0.94*u; BOOK.flip.rotation.z=th(uu); deformPage(sg*(0.28+0.32*Math.sin(uu*Math.PI))); BOOK.flip.position.y=pile+0.006+Math.sin(uu*Math.PI)*0.02; if(u>0.5&&handState.right.pose==='turn') handState.right.pose='holdBook'; }},
+    {dur:0.24,ease:Ease.outCubic,start:()=>SFX.pageLand(),update:u=>{ BOOK.flip.rotation.z=th(1); deformPage(sg*(0.28*(1-u)+0.10*Math.abs(Math.sin(u*Math.PI*2))*(1-u))); BOOK.flip.position.y=pile+0.006*(1-u); }},
+  ],()=>{ BOOK.flip.visible=false; deformPage(0); BOOK.anim=null; showSpread(k+dir); }); }
+function updateBook(dt){ if(!S.book) return;
   const tp = S.zoom ? tmpV.set(-ndc.x*0.27-S.panX, -0.03-ndc.y*0.19-S.panY, -0.245) : BOOK.target; const rx = S.zoom?1.3:BOOK.rx;
-  BOOK.g.position.lerp(tp,Math.min(1,dt*8)); BOOK.g.rotation.x+=(rx-BOOK.g.rotation.x)*Math.min(1,dt*8); }
+  Anim.spring(BOOK.g.position,tp,BOOK.vel,140,16,dt); BOOK.g.rotation.x+=(rx-BOOK.g.rotation.x)*Math.min(1,dt*8); }
 function openBook(){ if(S.held) putDownDoc(); if(S.heldStamp) putDownStamp(); if(S.book) return; S.book=true; S.zoom=false; S.panX=S.panY=0;
-  BOOK.g.visible=true; rig.add(BOOK.g); BOOK.g.position.set(0,-0.45,-0.35); BOOK.g.rotation.set(0.6,0,0); handState.left.pose='holdBook'; handState.right.pose='holdBook'; showSpread(BOOK.spread); SFX.paper(); setHint(); }
-function closeBook(){ if(!S.book) return; S.book=false; S.zoom=false; BOOK.anim=null; BOOK.flip.visible=false; scene.attach(BOOK.g); BOOK.g.visible=false; handState.left.pose='rest'; handState.right.pose='rest'; SFX.place(); updateDocbar(); setHint(); }
-function jumpToDoc(d){ const i=PAGES.findIndex(p=>p.doc===d); if(i<0) return; if(!S.book) openBook(); BOOK.anim=null; BOOK.flip.visible=false; showSpread(Math.floor((i+1)/2)); SFX.paper(); }
+  BOOK.g.visible=true; rig.add(BOOK.g); BOOK.g.position.set(0,-0.45,-0.35); BOOK.vel.set(0,0.4,0); BOOK.g.rotation.set(0.6,0,0); handState.left.pose='holdBook'; handState.right.pose='holdBook'; showSpread(BOOK.spread); SFX.paper(); setHint(); }
+function closeBook(){ if(!S.book) return; S.book=false; S.zoom=false; Anim.cancel(BOOK.anim); BOOK.anim=null; BOOK.flip.visible=false; deformPage(0); scene.attach(BOOK.g); BOOK.g.visible=false; handState.left.pose='rest'; handState.right.pose='rest'; SFX.place(); updateDocbar(); setHint(); }
+function jumpToDoc(d){ const i=PAGES.findIndex(p=>p.doc===d); if(i<0) return; if(!S.book) openBook(); Anim.cancel(BOOK.anim); BOOK.anim=null; BOOK.flip.visible=false; deformPage(0); showSpread(Math.floor((i+1)/2)); SFX.paper(); }
 const stackTop=scene.children.find(o=>o.material===M.rubberG&&o.geometry.parameters&&o.geometry.parameters.width===0.25); if(stackTop) stackTop.userData={type:'file'};
 (function(){ const c=document.createElement('canvas'); c.width=512; c.height=256; const g=c.getContext('2d'); g.fillStyle='#efe6d2'; g.fillRect(0,0,512,256); g.strokeStyle='#1b2a5a'; g.lineWidth=6; g.strokeRect(10,10,492,236);
   g.fillStyle='#1b2a5a'; g.font='bold 40px "IBM Plex Mono", monospace'; g.textAlign='center'; g.fillText('ZENITH COMPONENTS',256,80); g.font='30px "IBM Plex Mono", monospace'; g.fillText('CLIENT FILE · FY 2025-26',256,135); g.font='bold 34px "IBM Plex Mono", monospace'; g.fillStyle='#b3332e'; g.fillText('PBC · '+fileDocs.length+' DOCUMENTS',256,200);
@@ -1198,13 +1211,13 @@ function makeHand(side, opts){
   g.userData={fingers,tsegs,side};
   return g;
 }
-function setCurl(hand, curl, thumbCurl){
+function setCurl(hand, curl, thumbCurl, cf){
   hand.userData.fingers.forEach(f=>{
-    const spread=f.root.userData.yaw||0;
-    f.root.rotation.y = spread*(1-curl*0.7);
-    f.segs[0].rotation.x = -curl*0.9 - 0.08;
-    f.segs[1].rotation.x = -curl*1.1;
-    f.segs[2].rotation.x = -curl*0.8;
+    const ci=cf?cf[3-f.i]:curl; const spread=f.root.userData.yaw||0;
+    f.root.rotation.y = spread*(1-ci*0.7);
+    f.segs[0].rotation.x = -ci*0.9 - 0.08;
+    f.segs[1].rotation.x = -ci*1.1;
+    f.segs[2].rotation.x = -ci*0.8;
   });
   hand.userData.tsegs[0].rotation.x = -thumbCurl*0.6; hand.userData.tsegs[1].rotation.x = -thumbCurl*0.9;
 }
@@ -1222,7 +1235,7 @@ const poses = {
     turn:    {p:new THREE.Vector3(-0.02,-0.18,-0.40), e:new THREE.Euler(Math.PI/2,-0.5,Math.PI,'XYZ'), c:0.35, t:0.6},
   }
 };
-const handState = { left:{pose:'rest', p:new THREE.Vector3(), q:new THREE.Quaternion(), c:0.3, t:0.35}, right:{pose:'rest', p:new THREE.Vector3(), q:new THREE.Quaternion(), c:0.3, t:0.35} };
+const handState = { left:{pose:'rest', lastPose:'rest', tr:null, cf:null, c:0.42, t:0.45}, right:{pose:'rest', lastPose:'rest', tr:null, cf:null, c:0.42, t:0.45} };
 let overridePose=null; // during stamping animation: {p,q,c,t}
 
 function buildHands(){
@@ -1258,7 +1271,7 @@ for(let i=0;i<DUST_N;i++){ dustData.push({a:Math.random()*Math.PI*2, r:Math.rand
 const STEAM_N=22, steam=makeParticles(STEAM_N,0xd8d8e0,false), steamData=[];
 for(let i=0;i<STEAM_N;i++){ steamData.push({t:Math.random(), x:(Math.random()-0.5)*0.02, z:(Math.random()-0.5)*0.02, ph:Math.random()*6}); }
 const steamBase=new THREE.Vector3();
-function updateParticles(dt,now){ mugG.getWorldPosition(steamBase);
+function updateParticles(dt,now){ mugG.getWorldPosition(steamBase); updatePuffs(dt);
   const P=dust.geometry.attributes.position.array, Sz=dust.geometry.attributes.aSize.array, A=dust.geometry.attributes.aAlpha.array;
   for(let i=0;i<DUST_N;i++){ const d=dustData[i]; d.h-=dt*0.012*d.s; if(d.h<0){ d.h=1; d.a=Math.random()*Math.PI*2; d.r=Math.random(); } d.a+=dt*0.15;
     const y=TOP+0.02+d.h*0.40, rad=0.04+(1-d.h)*0.34*d.r; const x=0.58+Math.cos(d.a)*rad+Math.sin(now*0.7+d.ph)*0.01, z=-0.60+Math.sin(d.a)*rad+Math.cos(now*0.5+d.ph)*0.01;
@@ -1334,18 +1347,45 @@ function driveRealHands(){ if(!RH.ready||!RH.root.visible) return;
     setBoneWorld(H.fore,elbow,lookY(elbow,wrist,palm).clone());
     const shoulder=rig.localToWorld(new THREE.Vector3(side==='left'?-0.20:0.20,-0.34,0.30));
     setBoneWorld(H.upper,shoulder,lookY(shoulder,elbow,palm).clone());
-    const st=handState[side]; const c=st.c, t=st.t; const k=[0.70,0.80,0.55];
-    Object.keys(H.fingers).forEach((name,fi)=>{ const spread=(fi-1.5)*0.06*(1-c); H.fingers[name].forEach((b,i)=>{ if(!b) return; b.quaternion.copy(b.userData.rest).multiply(rhTmp.qr.setFromAxisAngle(XAXIS,c*k[i]+0.03)); if(i===0) b.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),spread)); }); });
+    const st=handState[side]; const c=st.c, t=st.t; const cf=st.cf||[c,c,c,c]; const k=[0.70,0.80,0.55];
+    Object.keys(H.fingers).forEach((name,fi)=>{ const cfi=cf[fi]; const spread=(fi-1.5)*0.06*(1-cfi); H.fingers[name].forEach((b,i)=>{ if(!b) return; b.quaternion.copy(b.userData.rest).multiply(rhTmp.qr.setFromAxisAngle(XAXIS,cfi*k[i]+0.03)); if(i===0) b.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),spread)); }); });
     H.thumb.forEach((b,i)=>{ if(!b) return; b.quaternion.copy(b.userData.rest).multiply(rhTmp.qr.setFromAxisAngle(XAXIS,t*[0.25,0.45,0.55][i])); });
   }); }
 loadRealHands();
 
+/* ---------------- Animation engine: easing, keyframe sequences, springs ---------------- */
+const Ease={linear:u=>u,inQuad:u=>u*u,outQuad:u=>1-(1-u)*(1-u),inCubic:u=>u*u*u,outCubic:u=>1-Math.pow(1-u,3),inOutCubic:u=>u<0.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2,inOutQuad:u=>u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2,
+  outBack:u=>{ const c=1.6; return 1+(c+1)*Math.pow(u-1,3)+c*Math.pow(u-1,2); }, inBack:u=>{ const c=1.6; return (c+1)*u*u*u-c*u*u; },
+  outElastic:u=>u<=0?0:u>=1?1:Math.pow(2,-9*u)*Math.sin((u*8-0.75)*(2*Math.PI/3))+1};
+const Anim={list:[],
+  run(steps,onDone){ const h={steps,i:0,t:0,onDone,done:false}; if(steps[0]&&steps[0].start) steps[0].start(); Anim.list.push(h); return h; },
+  cancel(h){ if(h) h.done=true; },
+  tick(dt){ for(const h of Anim.list){ if(h.done) continue; h.t+=dt; let step=h.steps[h.i];
+      while(step&&h.t>=step.dur){ if(step.update) step.update(1); if(step.end) step.end(); h.t-=step.dur; h.i++; step=h.steps[h.i]; if(step&&step.start) step.start(); if(h.done) break; }
+      if(h.done) continue; if(!step){ h.done=true; if(h.onDone) h.onDone(); continue; }
+      const u=(step.ease||Ease.inOutCubic)(step.dur>0?Math.min(1,h.t/step.dur):1); if(step.update) step.update(u); }
+    Anim.list=Anim.list.filter(h=>!h.done); },
+  spring(pos,target,vel,k,damp,dt){ vel.x+=(target.x-pos.x)*k*dt; vel.y+=(target.y-pos.y)*k*dt; vel.z+=(target.z-pos.z)*k*dt; const d=Math.exp(-damp*dt); vel.multiplyScalar(d); pos.addScaledVector(vel,dt); }
+};
+/* Ink puff on the stamp strike */
+const puffs=makeParticles(60,0x2a1a18,false); const puffData=Array.from({length:60},()=>({life:0,v:new THREE.Vector3(),p:new THREE.Vector3(0,-10,0)}));
+function inkPuff(pos,color){ puffs.material.uniforms.uColor.value.set(color); let n=0; for(const d of puffData){ if(d.life>0) continue; d.life=0.35+Math.random()*0.3; d.p.copy(pos); const a=Math.random()*Math.PI*2, sp=0.12+Math.random()*0.22; d.v.set(Math.cos(a)*sp,0.06+Math.random()*0.12,Math.sin(a)*sp); if(++n>=22) break; } }
+function updatePuffs(dt){ const P=puffs.geometry.attributes.position.array, Sz=puffs.geometry.attributes.aSize.array, A=puffs.geometry.attributes.aAlpha.array;
+  puffData.forEach((d,i)=>{ if(d.life>0){ d.life-=dt; d.p.addScaledVector(d.v,dt); d.v.multiplyScalar(Math.exp(-6*dt)); d.v.y-=0.35*dt; if(d.p.y<TOP+0.002) d.p.y=TOP+0.002; }
+    P[i*3]=d.p.x; P[i*3+1]=d.p.y; P[i*3+2]=d.p.z; Sz[i]=0.005+0.012*(d.life>0?1-d.life/0.65:0); A[i]=d.life>0?Math.min(1,d.life*3)*0.5:0; });
+  ['position','aSize','aAlpha'].forEach(k=>puffs.geometry.attributes[k].needsUpdate=true); }
+
 /* ---------------- Game state ---------------- */
-const S = { started:false, zoom:false, panX:0, panY:0, held:null, heldStamp:null, budget:100, time:90*60, scores:{skept:70,quality:70,client:85,fraud:65}, done:false, anim:null, lookLock:false, muted:false, shake:0 };
+const S = { started:false, zoom:false, panX:0, panY:0, heldVel:new THREE.Vector3(), camDolly:0, camDollyV:0, held:null, heldStamp:null, budget:100, time:90*60, scores:{skept:70,quality:70,client:85,fraud:65}, done:false, anim:null, lookLock:false, muted:false, shake:0 };
 const scoreDefs=[['skept','Professional skepticism'],['quality','Audit quality'],['client','Client relationship'],['fraud','Fraud detection']];
 const rail=document.getElementById('rail');
+let railPrev=null;
 function renderRail(deltas){
-  rail.innerHTML = scoreDefs.map(([k,l])=>{ const d=deltas&&deltas[k]; const cls=d>0?'up':d<0?'dn':''; return `<div class="lbl"><span>${l}</span><b>${S.scores[k]}</b></div><div class="bar"><i class="${cls}" style="width:${S.scores[k]}%"></i></div>`; }).join('');
+  const prev=railPrev||Object.assign({},S.scores);
+  rail.innerHTML = scoreDefs.map(([k,l])=>{ const d=deltas&&deltas[k]; const cls=d>0?'up':d<0?'dn':''; return `<div class="lbl"><span>${l}</span><b data-k="${k}">${prev[k]}</b></div><div class="bar"><i class="${cls}" data-k="${k}" style="width:${prev[k]}%"></i></div>`; }).join('');
+  const t0=performance.now(); const tick=()=>{ const u=Math.min(1,(performance.now()-t0)/700), e=Ease.outCubic(u); scoreDefs.forEach(([k])=>{ const b=rail.querySelector(`b[data-k="${k}"]`); if(b) b.textContent=Math.round(prev[k]+(S.scores[k]-prev[k])*e); }); if(u<1) requestAnimationFrame(tick); };
+  requestAnimationFrame(()=>{ scoreDefs.forEach(([k])=>{ const i=rail.querySelector(`i[data-k="${k}"]`); if(i) i.style.width=S.scores[k]+'%'; }); tick(); });
+  railPrev=Object.assign({},S.scores);
 }
 renderRail();
 const hintEl=document.getElementById('hint'), toastEl=document.getElementById('toast'), clockEl=document.getElementById('clock'), budgetEl=document.getElementById('budget');
@@ -1396,7 +1436,7 @@ function pickUpDoc(d){
   if(S.held===d) return;
   if(S.held) putDownDoc();
   if(S.heldStamp) putDownStamp();
-  ensureDrawn(d); d.visible=true; rig.attach(d); S.held=d; handState.left.pose='holdDoc'; S.zoom=false; setPage(d,0);
+  ensureDrawn(d); d.visible=true; rig.attach(d); S.held=d; S.heldVel.set(0,0.35,0); d.userData.wobble=0; handState.left.pose='holdDoc'; S.zoom=false; setPage(d,0);
   if(!d.userData.read){ d.userData.read=true; spend(d.userData.cost); }
   SFX.paper(); updateDocbar(); updateFileCount();
   if(d.userData.id==='invoice') addNote('Invoice 4471: ₹2.80 cr, dated 31 Mar, "book in March pls" pen note','fact');
@@ -1404,8 +1444,8 @@ function pickUpDoc(d){
   if(d.userData.id==='email'){ addNote('CFO: logistical delay; customer had accepted goods; wants point closed','claim'); setTimeout(()=>toast('The CFO would like this point closed. That is an explanation, not evidence.'), 900); }
   setHint();
 }
-function putDownDoc(){ const d=S.held; if(!d) return; scene.attach(d); S.held=null; S.zoom=false; handState.left.pose='rest'; SFX.place(); setHint(); updateDocbar();
-  if(d.userData.inFile){ d.visible=false; d.position.copy(d.userData.home.pos); d.quaternion.copy(d.userData.home.quat); } else d.userData.returning=true; }
+function putDownDoc(){ const d=S.held; if(!d) return; scene.attach(d); S.held=null; S.zoom=false; handState.left.pose='rest'; setHint(); updateDocbar();
+  if(d.userData.inFile){ SFX.place(); d.visible=false; d.position.copy(d.userData.home.pos); d.quaternion.copy(d.userData.home.quat); } else d.userData.returning=true; }
 const docbar=document.getElementById('docbar');
 function updateDocbar(){ const d=S.held; const on=!!d||S.book; docbar.hidden=!on; hintEl.hidden=on||S.interview; document.getElementById('dbContents').hidden=!S.book; document.getElementById('dbZoom').setAttribute('aria-pressed',S.zoom?'true':'false'); if(!on) return;
   if(S.book){ const L=PAGES[2*BOOK.spread-1], R=PAGES[2*BOOK.spread]; const nm=x=>!x?'':x.contents?'Contents':x.doc.userData.label+(x.doc.userData.draws.length>1?' (p.'+(x.p+1)+')':'');
@@ -1443,22 +1483,25 @@ function putDownStamp(){ const st=S.heldStamp; if(!st) return; scene.attach(st);
 function sip(){
   if(S.anim||S.sipping) return; if(mugG.userData.sips>=4){ toast('Empty. The pantry boy is on leave.'); return; }
   S.sipping=true; S.lookLock=true;
-  const camQ=new THREE.Quaternion(); camera.getWorldQuaternion(camQ); const invQ=camQ.clone().invert();
   const mugW=new THREE.Vector3(); mugG.getWorldPosition(mugW); mugW.y+=0.05;
   const gripQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15,0.25,-Math.PI/2,'XYZ'));
-  const reachP=rig.worldToLocal(mugW.clone().add(new THREE.Vector3(0.03,0.02,0.05)));
-  const sipP=new THREE.Vector3(0.10,-0.13,-0.30), sipQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(0.75,0.15,-Math.PI/2,'XYZ')), tiltQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(1.25,0.15,-Math.PI/2,'XYZ'));
+  const reachP=rig.worldToLocal(mugW.clone().add(new THREE.Vector3(0.03,0.02,0.05))); const preP=reachP.clone().add(new THREE.Vector3(0.02,0.045,0.03));
+  const sipP=new THREE.Vector3(0.10,-0.13,-0.30), sipQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(0.75,0.15,-Math.PI/2,'XYZ')), tiltQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(1.3,0.15,-Math.PI/2,'XYZ'));
   const startP=hands.right.position.clone(), startQ=hands.right.quaternion.clone();
-  const ease=x=>x<0.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
-  let t=0, phase=0; const tmpQ2=new THREE.Quaternion();
-  S.sipAnim=(dt)=>{ t+=dt;
-    if(phase===0){ const u=Math.min(1,t/0.5); overridePose={p:startP.clone().lerp(reachP,ease(u)),q:startQ.clone().slerp(gripQ,ease(u)),c:0.5,t:0.6}; if(u>=1){ phase=1; t=0; hands.right.attach(mugG); SFX.clink(); } }
-    else if(phase===1){ const u=Math.min(1,t/0.6); overridePose={p:reachP.clone().lerp(sipP,ease(u)),q:gripQ.clone().slerp(sipQ,ease(u)),c:0.9,t:0.95}; mugG.position.lerp(tmpV.set(0,-0.045,-0.05),Math.min(1,dt*10)); mugG.quaternion.slerp(tmpQ2.setFromEuler(new THREE.Euler(0,0,Math.PI/2)),Math.min(1,dt*10)); if(u>=1){ phase=2; t=0; } }
-    else if(phase===2){ const u=Math.min(1,t/1.3); const k=Math.sin(u*Math.PI); overridePose={p:sipP,q:sipQ.clone().slerp(tiltQ,k),c:0.9,t:0.95}; if(!S.sipped&&u>0.35){ S.sipped=true; SFX.sip(); } if(u>=1){ phase=3; t=0; S.sipped=false; } }
-    else if(phase===3){ const u=Math.min(1,t/0.6); overridePose={p:sipP.clone().lerp(reachP,ease(u)),q:sipQ.clone().slerp(gripQ,ease(u)),c:0.9,t:0.95}; if(u>=1){ phase=4; t=0; scene.attach(mugG); mugG.position.copy(mugG.userData.home.pos); mugG.quaternion.copy(mugG.userData.home.quat); SFX.clink(); mugG.userData.sips++; coffee.position.y=0.088-mugG.userData.sips*0.015; if(mugG.userData.sips>=4) coffee.visible=false; } }
-    else { overridePose=null; S.sipAnim=null; S.sipping=false; S.lookLock=false;
-      if(mugG.userData.sips===1) toast(cfg.drink==='chai'?'Masala chai from the pantry. Cardamom, too sweet, exactly right. The deadline feels a little further away.':'Filter coffee, Kumbakonam degree. The deadline feels a little further away.');
-      if(mugG.userData.sips===4) toast('Last sip. The pantry boy is on leave until Monday.'); } };
+  const cur=new THREE.Vector3(), cq=new THREE.Quaternion(); const setP=(pp,qq,c,t)=>{ overridePose={p:pp,q:qq,c,t}; };
+  const mugIn=new THREE.Vector3(0,-0.045,-0.05), mugQ=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,Math.PI/2));
+  S.sipAnim=Anim.run([
+    {dur:0.45,ease:Ease.inOutCubic,update:u=>{ cur.lerpVectors(startP,preP,u); cur.y+=Math.sin(u*Math.PI)*0.04; setP(cur.clone(),cq.copy(startQ).slerp(gripQ,Ease.outCubic(u)).clone(),0.35,0.5); }},
+    {dur:0.16,ease:Ease.outCubic,update:u=>{ setP(cur.lerpVectors(preP,reachP,u).clone(),gripQ,0.35+0.55*u,0.5+0.45*u); }, end:()=>{ hands.right.attach(mugG); SFX.clink(); }},
+    {dur:0.62,ease:Ease.inOutCubic,update:u=>{ cur.lerpVectors(reachP,sipP,u); cur.y+=Math.sin(u*Math.PI)*0.02; setP(cur.clone(),cq.copy(gripQ).slerp(sipQ,Ease.outCubic(Math.max(0,(u-0.15)/0.85))).clone(),0.9,0.95); mugG.position.lerp(mugIn,Math.min(1,u*2)); mugG.quaternion.slerp(mugQ,Math.min(1,u*2)); }},
+    {dur:0.5,ease:Ease.inOutCubic,update:u=>{ setP(sipP,cq.copy(sipQ).slerp(tiltQ,u).clone(),0.9,0.95); }, end:()=>SFX.sip()},
+    {dur:0.5,update:()=>setP(sipP,tiltQ,0.9,0.95)},
+    {dur:0.45,ease:Ease.inOutCubic,update:u=>{ setP(sipP,cq.copy(tiltQ).slerp(sipQ,u).clone(),0.9,0.95); }},
+    {dur:0.6,ease:Ease.inOutCubic,update:u=>{ cur.lerpVectors(sipP,reachP,u); cur.y+=Math.sin(u*Math.PI)*0.03; setP(cur.clone(),cq.copy(sipQ).slerp(gripQ,Ease.outCubic(u)).clone(),0.9,0.95); }, end:()=>{ scene.attach(mugG); mugG.position.copy(mugG.userData.home.pos); mugG.quaternion.copy(mugG.userData.home.quat); SFX.clink(); mugG.userData.sips++; coffee.position.y=0.088-mugG.userData.sips*0.015; if(mugG.userData.sips>=4) coffee.visible=false; }},
+    {dur:0.2,ease:Ease.outCubic,update:u=>{ setP(cur.lerpVectors(reachP,preP,u).clone(),gripQ,0.9-0.5*u,0.95-0.4*u); }},
+  ],()=>{ overridePose=null; S.sipAnim=null; S.sipping=false; S.lookLock=false;
+    if(mugG.userData.sips===1) toast(cfg.drink==='chai'?'Masala chai from the pantry. Cardamom, too sweet, exactly right. The deadline feels a little further away.':'Filter coffee, Kumbakonam degree. The deadline feels a little further away.');
+    if(mugG.userData.sips===4) toast('Last sip. The pantry boy is on leave until Monday.'); });
 }
 window.__game={ get S(){ return S; }, sip, get hands(){ return hands; }, mugG, pick, target, RH, rig, camera, THREE };
 function stampDoc(d, hit){
@@ -1475,7 +1518,17 @@ function stampDoc(d, hit){
   const up=rig.worldToLocal(handAtSurface.clone().add(new THREE.Vector3(0,0.16,0)));
   const down=rig.worldToLocal(handAtSurface.clone());
   const startP=hands.right.position.clone(), startQ=hands.right.quaternion.clone();
-  S.anim={t:0, phase:0, up, down, q:localQ, startP, startQ, doc:d, uv, stamped:false, st};
+  const aboveHi=up.clone().add(new THREE.Vector3(0,0.035,0)), bounce=down.clone().add(new THREE.Vector3(0,0.014,0)); const surfW=surface.clone();
+  const cur=new THREE.Vector3(), cq=new THREE.Quaternion(); const setP=(pp,qq,c,t)=>{ overridePose={p:pp,q:qq||localQ,c:c||0.9,t:t||0.95}; };
+  S.anim=Anim.run([
+    {dur:0.42,ease:Ease.inOutCubic,update:u=>{ cur.lerpVectors(startP,up,u); cur.y+=Math.sin(u*Math.PI)*0.05; setP(cur.clone(),cq.copy(startQ).slerp(localQ,Ease.outCubic(Math.min(1,u*1.2))).clone(),0.85,0.9); }},
+    {dur:0.16,ease:Ease.outQuad,update:u=>{ setP(cur.lerpVectors(up,aboveHi,u).clone()); }},
+    {dur:0.10,ease:Ease.inCubic,update:u=>{ setP(cur.lerpVectors(aboveHi,down,u).clone()); }, end:()=>{ inkStamp(d,uv,st); SFX.thunk(); S.shake=0.008; inkPuff(surfW,st.userData.ink); }},
+    {dur:0.07,update:()=>setP(down.clone())},
+    {dur:0.18,ease:Ease.outBack,update:u=>{ setP(cur.lerpVectors(down,bounce,u).clone()); }},
+    {dur:0.34,ease:Ease.inOutCubic,update:u=>{ setP(cur.lerpVectors(bounce,up,u).clone(),null,0.85,0.9); }},
+  ],()=>{ overridePose=null; S.lookLock=false; S.anim=null;
+    if(d.userData.id==='invoice'){ conclude(st.userData.id); } else { toast('You stamped the evidence. The conclusion goes on the invoice, not the gate pass.', 'bad'); spend(2); } });
 }
 function inkStamp(d, uv, st){
   const g=d.userData.ctx; const x=uv.x*CW, y=(1-uv.y)*CH;
@@ -1646,7 +1699,9 @@ const PEOPLE={
 if(window.claude&&typeof window.claude.use==='function'){ window.claude.use('sample').then(s=>{ IV.ai=s||null; IV.aiChecked=true; updateAiBadge(); }).catch(()=>{ IV.aiChecked=true; updateAiBadge(); }); } else { IV.aiChecked=true; updateAiBadge(); }
 function updateAiBadge(){ ivAi.textContent = IV.ai ? 'AI-driven character' : 'scripted character'; }
 function fade(on){ fadeEl.classList.toggle('on',on); }
-function addLine(who,text,cls){ const d=document.createElement('div'); d.className='l '+(who==='You'?'you':'cfo')+(cls?' '+cls:''); d.innerHTML='<small>'+(who==='You'?'Aditi (you)':escapeHtml(IV.cur.name))+'</small>'+escapeHtml(text); ivLog.appendChild(d); ivLog.scrollTop=ivLog.scrollHeight; return d; }
+function typeInto(el,text,pre){ clearInterval(el._ti); const n=text.length; let i=0; el._ti=setInterval(()=>{ i=Math.min(n,i+2); el.innerHTML=pre+escapeHtml(text.slice(0,i))+(i<n?'<span class="caret">▍</span>':''); ivLog.scrollTop=ivLog.scrollHeight; if(i>=n) clearInterval(el._ti); },28); }
+function addLine(who,text,cls){ const d=document.createElement('div'); d.className='l '+(who==='You'?'you':'cfo')+(cls?' '+cls:''); const pre='<small>'+(who==='You'?'Aditi (you)':escapeHtml(IV.cur.name))+'</small>'; ivLog.appendChild(d);
+  if(who==='You'||cls==='typing') d.innerHTML=pre+escapeHtml(text); else typeInto(d,text,pre); ivLog.scrollTop=ivLog.scrollHeight; return d; }
 function renderChips(){ const P=IV.cur; ivChips.innerHTML=''; P.chips.forEach(([t,k])=>{ if(k==='evi'&&(!gatepass.userData.read||IV.presented)) return; if(k==='wh'&&!PEOPLE.wh.asked) return; if(k==='mca'&&!mca.userData.read) return; const b=document.createElement('button'); b.type='button'; b.className='chip'+(k==='evi'?' evi':''); b.textContent=t; b.addEventListener('click',()=>{ if(k==='evi') presentGatePass(); else ask(t); }); ivChips.appendChild(b); }); }
 function setMood(m){ IV.cur.model.state.mood=m; ivMood.textContent=MOOD_LABEL[m]||m; ivMood.className='mood '+(MOOD_CLASS[m]||''); }
 
@@ -1670,7 +1725,7 @@ function callPerson(P){
   ivName.textContent=P.name; ivTitle.textContent=P.title; ivLog.innerHTML=''; IV.presented=false;
   setTimeout(()=>{ fade(true); SFX.door(); }, 1500);
   setTimeout(()=>{ SFX.steps(); }, 2100);
-  setTimeout(()=>{ ivCamera(); P.model.g.visible=true; setMood('calm'); S.interview=true; tYaw=IV_YAW; tPitch=IV_PITCH; SFX.chair(); hintEl.hidden=true; }, 3300);
+  setTimeout(()=>{ ivCamera(); P.model.g.visible=true; setMood('calm'); S.interview=true; tYaw=IV_YAW; tPitch=IV_PITCH; yaw=IV_YAW-0.12; pitch=IV_PITCH+0.14; SFX.chair(); hintEl.hidden=true; }, 3300);
   setTimeout(()=>{ fade(false); S.fading=false; if(P.model.cup){ P.model.torso.remove(P.model.cup); P.model.cup=null; P.model.sip=null; }
     document.getElementById('offerEyebrow').textContent=P.name.split(' ')[0]+' has sat down. Pantry is on the line.'; offerEl.hidden=false; S.menu=true; }, 3900);
 }
@@ -1720,7 +1775,7 @@ async function ask(q){
     catch(e){ if(e&&(e.code==='not_granted'||e.code==='rate_limited')){ IV.ai=null; updateAiBadge(); } r=null; } }
   if(!r) r=normalize(P.script(q,P.st),P.key);
   P.history.push(userTurn,{role:'assistant',content:JSON.stringify(r)});
-  line.classList.remove('typing'); line.innerHTML='<small>'+escapeHtml(P.name)+'</small>'+escapeHtml(r.reply); ivLog.scrollTop=ivLog.scrollHeight;
+  line.classList.remove('typing'); typeInto(line,r.reply,'<small>'+escapeHtml(P.name)+'</small>');
   setMood(r.mood); say(r.reply);
   const delta={client:r.relationship||0, skept:0, fraud:0};
   if(P.key==='cfo'&&r.mood==='conceding'&&!P.conceded){ P.conceded=true; S.scores.fraud=Math.min(100,S.scores.fraud+6); delta.fraud=6; addNote('CFO conceded: dispatch was technically April','fact'); }
@@ -1778,7 +1833,8 @@ function animate(){
   yaw += (tYaw-yaw)*Math.min(1,dt*6); pitch += (tPitch-pitch)*Math.min(1,dt*6);
   camera.rotation.set(pitch, yaw, 0, 'YXZ');
   const sway = S.started ? 1 : 0;
-  camera.position.set(camBase.x+Math.sin(now*0.7)*0.003*sway, camBase.y+Math.sin(now*1.1)*0.004*sway, camBase.z);
+  { const want=(S.zoom&&(S.held||S.book))?-0.05:(S.book?-0.02:0); S.camDollyV+=(want-S.camDolly)*90*dt; S.camDollyV*=Math.exp(-13*dt); S.camDolly+=S.camDollyV*dt; }
+  camera.position.set(camBase.x+Math.sin(now*0.7)*0.003*sway, camBase.y+Math.sin(now*1.1)*0.004*sway+S.camDolly*0.3, camBase.z+S.camDolly);
   if(S.shake>0){ camera.position.x+=(Math.random()-0.5)*S.shake; camera.position.y+=(Math.random()-0.5)*S.shake; S.shake*=0.82; if(S.shake<0.0005) S.shake=0; }
 
   // timer
@@ -1791,46 +1847,34 @@ function animate(){
   updateBook(dt);
   animatePerson(CFO,dt,now); animatePerson(WH,dt,now);
 
-  // hands
+  // hands: keyframed transitions with an arc, staggered fingers, independent idle sway
   ['left','right'].forEach(side=>{
     const h=hands[side]; if(!h) return; const st=handState[side];
-    let P = poses[side][st.pose] || poses[side].rest; let p=P.p, q=tmpQ.setFromEuler(P.e), c=P.c, t=P.t;
-    if(side==='right'&&overridePose){ p=overridePose.p; q=overridePose.q; c=overridePose.c; t=overridePose.t; }
-    const k=Math.min(1,dt*(overridePose&&side==='right'?14:7));
-    h.position.lerp(p,k); h.quaternion.slerp(q,k);
-    st.c+= (c-st.c)*k; st.t+=(t-st.t)*k; setCurl(h,st.c,st.t);
-    if(!overridePose||side==='left'){ h.position.y+=Math.sin(now*1.3+(side==='left'?0:1.7))*0.0025; }
+    const P = poses[side][st.pose] || poses[side].rest; let p=P.p, q=tmpQ.setFromEuler(P.e), c=P.c, t=P.t;
+    if(side==='right'&&overridePose){ p=overridePose.p; q=overridePose.q; c=overridePose.c; t=overridePose.t; st.tr=null; st.lastPose=null;
+      const k=Math.min(1,dt*20); h.position.lerp(p,k); h.quaternion.slerp(q,k); st.c+=(c-st.c)*k; st.t+=(t-st.t)*k; st.cf=[st.c,st.c,st.c,st.c]; }
+    else {
+      if(st.lastPose!==st.pose){ st.lastPose=st.pose; st.tr={t:0,dur:st.pose==='rest'?0.6:(st.pose==='turn'?0.22:0.48),p0:h.position.clone(),q0:h.quaternion.clone(),c0:st.c,t0:st.t,arc:st.pose==='rest'?0.035:0.06}; }
+      if(st.tr){ const tr=st.tr; tr.t+=dt; const u=Math.min(1,tr.t/tr.dur); const e=Ease.inOutCubic(u);
+        h.position.lerpVectors(tr.p0,p,e); h.position.y+=Math.sin(u*Math.PI)*tr.arc; h.quaternion.slerpQuaternions(tr.q0,q,Ease.outCubic(Math.min(1,u*1.15)));
+        st.cf=[0,1,2,3].map(i=>{ const fu=Ease.outCubic(Math.min(1,Math.max(0,(u-0.18-i*0.06)/0.55))); return tr.c0+(c-tr.c0)*fu; }); st.c=st.cf[1];
+        st.t=tr.t0+(t-tr.t0)*Ease.outCubic(Math.min(1,Math.max(0,(u-0.3)/0.6))); if(u>=1) st.tr=null; }
+      else { h.position.copy(p); h.quaternion.copy(q); st.c=c; st.t=t; st.cf=[c,c,c,c]; }
+      const ph=side==='left'?0:1.7, f=side==='left'?1.3:1.1; h.position.y+=Math.sin(now*f+ph)*0.0025; h.position.x+=Math.sin(now*0.7+ph)*0.0012;
+    }
+    setCurl(h,st.c,st.t,st.cf);
     if(h.userData.watchHand){ h.userData.watchHand.rotation.y = -(S.time/5400)*Math.PI*2; }
   });
 
   driveRealHands();
   // held doc follows rig
-  if(S.held){ const tp = S.zoom ? tmpV.set(-0.03-ndc.x*0.105-S.panX, -0.04-ndc.y*0.15-S.panY, -0.225) : tmpV.set(HELD_P.x,HELD_P.y,HELD_P.z); S.held.position.lerp(tp, Math.min(1,dt*8)); S.held.quaternion.slerp(HELD_Q, Math.min(1,dt*8)); }
-  docs.forEach(d=>{ if(d.userData.returning){ d.position.lerp(d.userData.home.pos, Math.min(1,dt*7)); d.quaternion.slerp(d.userData.home.quat, Math.min(1,dt*7)); if(d.position.distanceTo(d.userData.home.pos)<0.002){ d.position.copy(d.userData.home.pos); d.quaternion.copy(d.userData.home.quat); d.userData.returning=false; } } });
+  if(S.held){ const tp = S.zoom ? tmpV.set(-0.03-ndc.x*0.105-S.panX, -0.04-ndc.y*0.15-S.panY, -0.225) : tmpV.set(HELD_P.x,HELD_P.y,HELD_P.z); Anim.spring(S.held.position,tp,S.heldVel,150,16,dt); S.held.quaternion.slerp(HELD_Q, Math.min(1,dt*8)); S.held.quaternion.multiply(tmpQ.setFromEuler(new THREE.Euler(Math.sin(now*1.1)*0.004,0,Math.sin(now*0.8)*0.005))); }
+  docs.forEach(d=>{ const u=d.userData; if(u.returning){ if(!u.vel) u.vel=new THREE.Vector3(); Anim.spring(d.position,u.home.pos,u.vel,120,13,dt); d.quaternion.slerp(u.home.quat, Math.min(1,dt*7)); if(d.position.distanceTo(u.home.pos)<0.004&&u.vel.length()<0.08){ d.position.copy(u.home.pos); d.quaternion.copy(u.home.quat); u.returning=false; u.wobble=0.45; if(!u.inFile) SFX.place(); } }
+    if(u.wobble>0){ u.wobble-=dt; const w=Math.sin((0.45-u.wobble)*38)*0.035*Math.max(0,u.wobble/0.45); d.quaternion.copy(u.home.quat).multiply(tmpQ.setFromAxisAngle(XAXIS,w)); if(u.wobble<=0){ u.wobble=0; d.quaternion.copy(u.home.quat); } } });
   stamps.forEach(s=>{ if(s.userData.inHand){ s.position.lerp(tmpV.set(0,-0.088,-0.055), Math.min(1,dt*10)); s.quaternion.slerp(tmpQ.identity(), Math.min(1,dt*10)); }
     else if(s.userData.returning){ s.position.lerp(s.userData.home.pos, Math.min(1,dt*7)); s.quaternion.slerp(s.userData.home.quat, Math.min(1,dt*7)); if(s.position.distanceTo(s.userData.home.pos)<0.002){ s.position.copy(s.userData.home.pos); s.quaternion.copy(s.userData.home.quat); s.userData.returning=false; } } });
 
-  if(S.sipAnim) S.sipAnim(dt);
-  // stamp animation
-  if(S.anim){
-    const a=S.anim; a.t+=dt;
-    const ease=x=>x<0.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
-    if(a.phase===0){ // raise + move over document
-      const u=Math.min(1,a.t/0.45); overridePose={p:a.startP.clone().lerp(a.up,ease(u)), q:a.startQ.clone().slerp(a.q,ease(u)), c:0.85, t:0.9};
-      if(u>=1){ a.phase=1; a.t=0; }
-    } else if(a.phase===1){ // strike
-      const u=Math.min(1,a.t/0.16); overridePose={p:a.up.clone().lerp(a.down,u*u), q:a.q, c:0.9, t:0.95};
-      if(u>=1&&!a.stamped){ a.stamped=true; inkStamp(a.doc,a.uv,a.st); SFX.thunk(); S.shake=0.006; }
-      if(u>=1&&a.t>0.34){ a.phase=2; a.t=0; }
-    } else if(a.phase===2){ // lift
-      const u=Math.min(1,a.t/0.4); overridePose={p:a.down.clone().lerp(a.up,ease(u)), q:a.q, c:0.85, t:0.9};
-      if(u>=1){ a.phase=3; a.t=0; }
-    } else { // return to hold
-      overridePose=null; S.lookLock=false; const d=a.doc, st=a.st; S.anim=null;
-      if(d.userData.id==='invoice'){ conclude(st.userData.id); }
-      else { toast('You stamped the evidence. The conclusion goes on the invoice, not the gate pass.', 'bad'); spend(2); }
-    }
-  }
+  Anim.tick(dt);
   updateParticles(dt,now);
   if(composer){
     const want = S.book ? orthoDepth(S.zoom?0.25:0.5) : S.held ? orthoDepth(S.zoom?0.225:0.42) : S.interview ? orthoDepth(1.85) : orthoDepth(0.78);
