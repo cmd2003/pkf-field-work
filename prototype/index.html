@@ -315,7 +315,10 @@ const SFX = (() => {
   function init(){
     if(ctx) return;
     ctx = new (window.AudioContext||window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = 1.0; master.connect(ctx.destination);
+    if(ctx.state!=='running') ctx.resume();
+    const wake=()=>{ if(ctx&&ctx.state!=='running') ctx.resume(); };
+    ['pointerdown','keydown','touchstart','click'].forEach(ev=>window.addEventListener(ev,wake,{passive:true}));
     const len = ctx.sampleRate*2; noiseBuf = ctx.createBuffer(1,len,ctx.sampleRate);
     const d = noiseBuf.getChannelData(0); for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
     ambient();
@@ -361,9 +364,9 @@ const SFX = (() => {
     // HVAC hum + room tone
     const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
     const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=260;
-    const g = ctx.createGain(); g.gain.value = 0.045; s.connect(f); f.connect(g); g.connect(master); s.start();
+    const g = ctx.createGain(); g.gain.value = 0.07; s.connect(f); f.connect(g); g.connect(master); s.start();
     const o = ctx.createOscillator(); o.type='sine'; o.frequency.value=58;
-    const og = ctx.createGain(); og.gain.value = 0.012; o.connect(og); og.connect(master); o.start();
+    const og = ctx.createGain(); og.gain.value = 0.02; o.connect(og); og.connect(master); o.start();
     // occasional distant keyboard
     (function kb(){ if(!ctx) return; const n = 3+Math.floor(Math.random()*6);
       for(let i=0;i<n;i++) setTimeout(()=>{ if(!muted) noise(0.03,'bandpass',3200,4,0.05); }, i*(90+Math.random()*120));
@@ -371,7 +374,7 @@ const SFX = (() => {
   }
   const api = {
     init,
-    setMuted(m){ muted=m; if(master) master.gain.value = m?0:0.9; },
+    setMuted(m){ muted=m; if(master) master.gain.value = m?0:1.0; },
     thunk(){ if(!ctx||muted) return; tone('sine',110,38,0.22,0.7); noise(0.09,'lowpass',900,1,0.5); noise(0.04,'bandpass',2400,2,0.25); },
     paper(){ if(!ctx||muted) return; pageSound(0.36, 0.7); },
     pageTurn(){ if(!ctx||muted) return; pageSound(0.6, 1.0); },
@@ -379,7 +382,8 @@ const SFX = (() => {
     wood(){ if(!ctx||muted) return; noise(0.035,'bandpass',2200,3,0.3); tone('triangle',420,180,0.06,0.15); },
     chime(){ if(!ctx||muted) return; tone('sine',880,880,0.35,0.12); setTimeout(()=>tone('sine',1318,1318,0.5,0.12),110); },
     buzz(){ if(!ctx||muted) return; tone('sawtooth',98,62,0.45,0.10); tone('sine',49,49,0.5,0.15); },
-    tick(loud){ if(!ctx||muted) return; noise(0.012,'bandpass',4200,6, loud?0.09:0.035); },
+    tick(loud){ if(!ctx||muted) return; noise(0.012,'bandpass',4200,6, loud?0.11:0.05); },
+    state(){ return ctx?ctx.state:'none'; }, resume(){ if(ctx&&ctx.state!=='running') return ctx.resume(); },
     phone(){ if(!ctx||muted) return; [0,0.9].forEach(d=>setTimeout(()=>{ tone('sine',440,440,0.35,0.08); tone('sine',480,480,0.35,0.08); },d*1000)); },
     door(){ if(!ctx||muted) return; noise(0.5,'lowpass',700,0.8,0.25,0.15); setTimeout(()=>tone('sine',180,60,0.12,0.3),380); },
     steps(){ if(!ctx||muted) return; [0,0.42,0.84,1.26].forEach(d=>setTimeout(()=>{ tone('sine',70,40,0.12,0.35); noise(0.05,'lowpass',400,1,0.15); },d*1000)); },
@@ -1752,10 +1756,11 @@ window.addEventListener('keydown', e=>{ if(S.interview||e.target.tagName==='INPU
   if(e.key==='Escape'){ if(S.menu){ closeCallMenu(); closeFile(); } else if(S.book) closeBook(); else if(S.heldStamp) putDownStamp(); else if(S.held) putDownDoc(); }
   if(S.held||S.book){ if(e.key==='ArrowRight') pageNext(); if(e.key==='ArrowLeft') pagePrev(); if(e.key.toLowerCase()==='z'){ S.zoom=!S.zoom; S.panX=S.panY=0; updateDocbar(); } } });
 
-document.getElementById('mute').addEventListener('click', e=>{ S.muted=!S.muted; SFX.setMuted(S.muted); if(S.muted&&'speechSynthesis' in window) speechSynthesis.cancel(); e.currentTarget.textContent='Sound: '+(S.muted?'off':'on'); });
+document.getElementById('mute').addEventListener('click', e=>{ S.muted=!S.muted; SFX.setMuted(S.muted); if(S.muted&&'speechSynthesis' in window) speechSynthesis.cancel(); e.currentTarget.textContent='Sound: '+(S.muted?'off':'on'); if(!S.muted){ SFX.resume(); setTimeout(()=>SFX.chime(),50); } });
 document.getElementById('go').addEventListener('click', ()=>{
   SFX.init(); buildHands(); coffee.material.color.set(cfg.drink==='chai'?0xb8845a:0x2a160c); coffee.material.roughness=cfg.drink==='chai'?0.35:0.2; document.getElementById('start').hidden=true; document.getElementById('hud').classList.add('on'); S.started=true; S.t0=performance.now();
   setTimeout(()=>toast('Sixteen documents: three on the desk, thirteen in the green binder. Two witnesses on the phone. One decision.'), 600);
+  setTimeout(()=>{ SFX.chime(); if(SFX.state()!=='running'){ SFX.resume(); toast('Sound is blocked by the browser until you click once more. Click anywhere on the desk.', 'bad'); } }, 1400);
 });
 document.getElementById('again').addEventListener('click', ()=>location.reload());
 document.getElementById('back').addEventListener('click', ()=>{ document.getElementById('reviewOv').hidden=true; });
